@@ -106,7 +106,7 @@ function isCondExpLiteral(obj) {
                 case "ConditionalExpression":
                     return node.test.value ? node.consequent : node.alternate;
                 case "BinaryExpression":
-                    var tf = binaryOp(node.left.raw, node.operator, node.right.raw);
+                    var tf = binaryOp(node.left.value, node.operator, node.right.value);
                     return {
                         type: "Literal",
                         value: tf,
