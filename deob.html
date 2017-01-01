@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Deob</title>
+    <script src="bundle.js"></script>
+    <style type="text/css" media="screen">
+            body { 
+                position: absolute;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                margin: 4px 4px 4px 4px;
+                background-color: #191919;
+            }
+            #Main {
+                height: 100%;
+                float: left;
+            }
+            
+            #Right {
+                height: 100%;
+                float: right;
+            }
+            
+            #RightTop {
+                width: 100%;
+            }
+            
+            #ToDeob {
+                width: 100%;
+            }
+            #Main, #ToDeob, #InputData {
+                border-radius: 3px;
+            }
+            #InputData {
+                width: auto;
+                height: 100%;
+                overflow: hidden;
+            }
+            
+            #Radio {
+                position: relative;
+                width: 300px;
+                height: 100%;
+                float: right;
+            }
+            
+            #Radio td {
+                vertical-align: middle;
+            }
+            #Radio label {
+                height: 20px;
+                display: inline-block;
+                margin-left: 1em;
+            }
+            #Radio input {
+                display: none;	
+            }
+            
+            label > i {
+                cursor: pointer;
+                color: #aaaaaa;
+                font: 0.8em/normal 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+            }
+            
+            input:hover + i {
+                color: #cccccc;
+            }
+            input:checked + i {
+                color: #dddddd;
+                font-weight: bold;
+            }
+            
+            
+            .gutter {
+                background-repeat: no-repeat;
+                background-position: 50%;
+            }
+            .gutter.gutter-horizontal {
+            
+            cursor: ew-resize;
+            }
+
+            .gutter.gutter-vertical {
+            
+            cursor: ns-resize;
+            }	
+            .gutter.gutter-horizontal {
+                float: left;
+                height: 100%;
+            }
+            
+            #deob {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                width: 90%;
+                height: 30px;
+                margin-left: 1em;
+                padding: 0;
+                font-size: 1em;
+                color: #dddddd;
+                text-align: center;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+                line-height: 20px;
+                background: #454545;
+                border: 0;
+                border-bottom: 2px solid #2f2e2e;
+                border-radius: 2px;
+                cursor: pointer;
+                -webkit-box-shadow: inset 0 -2px #2f2e2e;
+                box-shadow: inset 0 -2px #2f2e2e;
+            }
+            #deob:active {
+                bottom: 1px;
+                outline: none;
+                -webkit-box-shadow: none;
+                box-shadow: none;
+            }	
+                    </style>
+<style type="text/css">
+                        #info{
+                            position: absolute;
+                            top: 3px;
+                            right: 3px;
+                            width: 16px;
+                            height: 16px;
+                            background-image: url("data:image/svg+xml;charset=utf8;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iaXNvLTg4NTktMSI/Pgo8IS0tIEdlbmVyYXRvcjogQWRvYmUgSWxsdXN0cmF0b3IgMTguMS4xLCBTVkcgRXhwb3J0IFBsdWctSW4gLiBTVkcgVmVyc2lvbjogNi4wMCBCdWlsZCAwKSAgLS0+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgdmVyc2lvbj0iMS4xIiBpZD0iQ2FwYV8xIiB4PSIwcHgiIHk9IjBweCIgdmlld0JveD0iMCAwIDI5LjUzNiAyOS41MzYiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDI5LjUzNiAyOS41MzY7IiB4bWw6c3BhY2U9InByZXNlcnZlIiB3aWR0aD0iMTZweCIgaGVpZ2h0PSIxNnB4Ij4KPGc+Cgk8cGF0aCBkPSJNMTQuNzY4LDBDNi42MTEsMCwwLDYuNjA5LDAsMTQuNzY4YzAsOC4xNTUsNi42MTEsMTQuNzY3LDE0Ljc2OCwxNC43NjdzMTQuNzY4LTYuNjEyLDE0Ljc2OC0xNC43NjcgICBDMjkuNTM1LDYuNjA5LDIyLjkyNCwwLDE0Ljc2OCwweiBNMTQuNzY4LDI3LjEyNmMtNi44MjgsMC0xMi4zNjEtNS41MzItMTIuMzYxLTEyLjM1OWMwLTYuODI4LDUuNTMzLTEyLjM2MiwxMi4zNjEtMTIuMzYyICAgYzYuODI2LDAsMTIuMzU5LDUuNTM1LDEyLjM1OSwxMi4zNjJDMjcuMTI3LDIxLjU5NCwyMS41OTQsMjcuMTI2LDE0Ljc2OCwyNy4xMjZ6IiBmaWxsPSIjY2NjY2NjIi8+Cgk8cGF0aCBkPSJNMTQuMzg1LDE5LjMzN2MtMS4zMzgsMC0yLjI4OSwwLjk1MS0yLjI4OSwyLjM0YzAsMS4zMzYsMC45MjYsMi4zMzksMi4yODksMi4zMzljMS40MTQsMCwyLjMxNC0xLjAwMywyLjMxNC0yLjMzOSAgIEMxNi42NzIsMjAuMjg4LDE1Ljc3MSwxOS4zMzcsMTQuMzg1LDE5LjMzN3oiIGZpbGw9IiNjY2NjY2MiLz4KCTxwYXRoIGQ9Ik0xNC43NDIsNi4wOTJjLTEuODI0LDAtMy4zNCwwLjUxMy00LjI5MywxLjA1M2wwLjg3NSwyLjgwNGMwLjY2OC0wLjQ2MiwxLjY5Ny0wLjc3MiwyLjU0NS0wLjc3MiAgIGMxLjI4NSwwLjAyNywxLjg3OSwwLjY0NCwxLjg3OSwxLjU0M2MwLDAuODUtMC42NywxLjY5Ny0xLjQ5NCwyLjcwMWMtMS4xNTYsMS4zNjQtMS41OTQsMi43MDEtMS41MTYsNC4wMTJsMC4wMjUsMC42NjloMy40MiAgIHYtMC40NjNjLTAuMDI1LTEuMTU4LDAuMzg3LTIuMTYyLDEuMzExLTMuMjE1YzAuOTc5LTEuMDgsMi4yMTEtMi4zNjYsMi4yMTEtNC4zMjFDMTkuNzA1LDcuOTY4LDE4LjEzOSw2LjA5MiwxNC43NDIsNi4wOTJ6IiBmaWxsPSIjY2NjY2NjIi8+Cgk8Zz4KCTwvZz4KCTxnPgoJPC9nPgoJPGc+Cgk8L2c+Cgk8Zz4KCTwvZz4KCTxnPgoJPC9nPgoJPGc+Cgk8L2c+Cgk8Zz4KCTwvZz4KCTxnPgoJPC9nPgoJPGc+Cgk8L2c+Cgk8Zz4KCTwvZz4KCTxnPgoJPC9nPgoJPGc+Cgk8L2c+Cgk8Zz4KCTwvZz4KCTxnPgoJPC9nPgoJPGc+Cgk8L2c+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPGc+CjwvZz4KPC9zdmc+Cg==")
+            }
+        </style>
+</head>
+
+<body>
+    <div id="Main">function foo(items) {
+    var x = "All this is syntax highlighted";
+    return x;
+}</div>
+    <div id="Right">
+        <div id="RightTop">
+            <div id="Radio">
+                <label>
+                        <input type="radio" name="method" value="objprop" checked>
+                        <i>var a = {'a':"ABC", 'b':"DEF"};</i>
+                    </label>
+                <label>
+                        <input type="radio" name="method" value="stringvars">
+                        <i>var a = "ABC", b = "DEF";</i>
+                    </label>
+                <label>			
+                        <input type="radio" name="method" value="hexencoded">
+                        <i>var a = ["ABC", "DEF", ...];</i>
+                    </label>
+                <label>
+                        <input type="radio" name="method" value="eval">
+                        <i>eval(function(p,a,c,k,e,d)..);</i>
+                    </label>
+                <button type="button" id="deob">Convert</button>
+                <div id="info"> </div>
+            </div>
+            <div id="InputData">/* Variable containing decoding information */
+var P1Q = { 'PJ1': "pt", 'Y48': "\"", 'T4E': "ons", 'H$2': "og(",'E21': "lo ", 'WNQ': "/s", 'A2$': "pt>", 'TB3': "doc", 'J6R': "Hel",  'MRT': "!\")<",'A4T': "cri", 'G4Q': "ume", 'Z8I': "nt", 'YW7': "wri", 'CA3': "te", 'XO8': "\x3Cs", 'O85': "wor", 'K7V': "ld",'PWZ': "ole" ,'E94': ">c", 'GQ3': ".l"};</div>
+        </div>
+        <div id="ToDeob">/* script to deobfuscate using above data */
+window[P1Q.TB3 + P1Q.G4Q + P1Q.Z8I][P1Q.YW7 + P1Q.CA3](P1Q.XO8 + P1Q.A4T + P1Q.PJ1 + P1Q.E94 + P1Q.T4E + P1Q.PWZ + P1Q.GQ3 + P1Q.H$2 + P1Q.Y48 + P1Q.J6R + P1Q.E21 + P1Q.O85 + P1Q.K7V + P1Q.MRT + P1Q.WNQ + P1Q.A4T + P1Q.A2$);</div>
+    </div>
+</body>
+
+</html>

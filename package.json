@@ -1,0 +1,19 @@
+{
+  "name": "deob",
+  "version": "1.0.1",
+  "main": "deob.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "seanl-adg",
+  "license": "ISC",
+  "dependencies": {
+    "json-loader": "^0.5.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/seanl-adg/deob"
+  },
+  "description": ""
+}
