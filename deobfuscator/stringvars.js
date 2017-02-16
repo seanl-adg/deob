@@ -47,25 +47,6 @@ var deobfuscator = (function(){
         }
     };
 
-    /*
-    var condition = function(path) {
-        var index;
-        if(path.node.name && (index = identifierArray.indexOf(path.node.name), index != -1)) {
-            // Almost all identifier can be replaced,
-            // except for it is used as a property name like window.Identifier. The value of "computed" key is false in this case.
-            // The "computed" key is true for an expression window["Identifier"]
-            return path.name == "property" && path.parent.node.computed == false ? false : index;
-        }
-        else {
-            return false;
-        }
-    };
-
-    var replace = function(path,index) {
-        path.replace( asttypes.builders.literal(declaratorArray[index].init.value) );
-    };
-    */
-
     var condition = function(node) {
         var index;
         if(node.name && (index = identifierArray.indexOf(node.name), index != -1)) {
@@ -93,7 +74,6 @@ var deobfuscator = (function(){
 
         var codeExpr = esprima.parse(code);
 
-        //ast-types is too bloated for our purpose. estraverse can achieve the same by calling inner methods directly.
         codeExpr = estraverse.replace(codeExpr, {
             enter: function(node) {
                 i = condition.call(this, node);
@@ -102,18 +82,6 @@ var deobfuscator = (function(){
                 }
             }
         });
-
-        /*
-        //ast-types passes a richier context than estraverse to the callback function which is necessary in our case.
-        asttypes.visit(codeExpr, {
-            visitIdentifier: function(path){
-                i = condition(path);
-                i !== false && replace(path,i);
-                //No need to traverse this node further.
-                return false;
-            }
-        });
-        */
 
         return escodegen.generate(comm.concatStrings(codeExpr));
     };

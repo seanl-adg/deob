@@ -9,6 +9,7 @@ function throwError(errortext) {
 }
 
 // [1,"2","a",.1,".1"] -> [1,2,false,false,false]
+// Maybe isNaN(Number(n)) would suffice
 function strictParseInt(n) {
     var t = typeof n;
     switch(t){
@@ -28,6 +29,10 @@ function strictParseInt(n) {
     return n === +n && n === (n|0) ? n : false;
 }
 
+/**
+ * This is equivalent to eval(l.toString() + o + r.toString()); i.e. calculating the passed binary operation (o) of l and r,
+ * but doing the same thing without invoking eval.
+ */
 function binaryOp(l, o, r) {
     switch(o) {
         case "<":
@@ -89,10 +94,10 @@ function isCondExpLiteral(obj) {
             // Skip nodes that we don't even need to check.
             if(parentNode.type == "ConditionalExpression") {
                 if(parentNode.test.value) {   // We are relying on the fact that the traverser always traverse "test" node at the earliest.
-                    this.__current.path == "alternate" && this.skip();
+                    this.__current.path == "alternate" && this.remove(); // If an element is skipped via this.skip(), leave callback is still called. 
                 }
                 else {
-                    this.__current.path == "consequent" && this.skip();
+                    this.__current.path == "consequent" && this.remove();
                 }
             }
         },
@@ -118,7 +123,16 @@ function isCondExpLiteral(obj) {
     
     return check ? obj : false;
 }
-
+/**
+ * Gets an abstract syntax tree of a Javascript code,
+ * tries to concatenate strings addition expressions such as "a" + "b" + "c" in the original Javascript code
+ * so that it becomes "abc", then returns the transformed ast.
+ * It does not currently concatenate when the first argument is not a string literal,
+ * like a + "b" + "c".
+ * 
+ * @param ast
+ * @return ast
+ */
 function concatStrings(ast) {
     estraverse.replace(ast, {
         enter: function(node) {
@@ -140,21 +154,76 @@ function concatStrings(ast) {
                 delete parentNode.left;
                 delete parentNode.right;
                 delete parentNode.operator;
-                
-                /* We can't just set nodes like node = { type: "Literal", value: val, raw: "\"" + val + "\"" };
-                  It seems that, the node passed to the enter method does not have a reference to the original AST, but accessing its properties are done by referencing the original AST.		
-                */
             }
         }
     });
 
-    return ast;	
-    //ToDo: currently it does not concatenate a + "b" + "c".
+    return ast;
 }
 
 function beautify(code){
     return escodegen.generate(concatStrings(esprima.parse(code)));
 }
+
+/**
+ * Calls eval in a sandboxed iframe.
+ * Usage: var seval = new SandboxEval(window.location.href);
+ * seval.getResult(code);
+ *  
+ * @constructor
+ */
+
+var SandboxEval = function () {
+    // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
+    function receiveAndPassBack(){
+        function evalScript(evt){
+            //Check that the message came from where we expect.
+            if(evt.origin != "%ORIGIN%") {
+                return;
+            }
+            try{
+                parent.postMessage({"success": 1, "result":_eval(evt.data)}, "%ORIGIN%");
+            } catch(error) {
+                parent.postMessage({"success":0, "error": error}, "%ORIGIN%");
+            }
+        }
+        // Store eval in case of bad situations.
+        _eval = window.eval;
+
+        window.addEventListener("message", evalScript);
+    }
+
+    // Create an iframe.
+    // Can't use contentWindow.document.write in a sandboxed iframe,
+    // so using data:text/html.
+    var sandbox = document.createElement('iframe');
+    sandbox.id ='sandbox';
+    sandbox.sandbox ='allow-scripts'; //sandboxing
+
+    var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
+    sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
+    document.body.appendChild(sandbox);
+
+    // register a local variable that we store the returned result.
+    var result;
+
+    function returnResult(evt) {
+        if(evt.success == 1) {
+            resolve(evt.data.result);
+        }
+        else if(evt.sucess == 0) {
+            reject(evt.data.error);
+        }
+        else {
+            reject(Error("Internal error."));
+        }
+    }
+
+    this.getResult = function(code) {
+        result = undefined;
+        //....
+    };
+};
 
 module.exports = { 
     throwError: throwError,

@@ -43,7 +43,8 @@ var deobfuscator = (function() {
     };
 
     var replace = function(index) {
-        var value = arrayElements[index].value, raw = arrayElements[index].raw;
+        var value = arrayElements[index].value;
+        var raw = arrayElements[index].raw;
         return {
             type: "Literal",
             value: value,
