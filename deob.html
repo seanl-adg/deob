@@ -19,11 +19,9 @@
             height: 100%;
             float: left;
         }
-
         #Tabs {
             width: 100%;
         }
-
         #Right {
             height: 100%;
             float: right;
@@ -88,9 +86,10 @@
         #Main > nav {
             height: 28px;
         }
-        
         #MainEditors { 
             height: calc(100% - 28px);
+            background-color: #191919; /* same as body */
+            z-index: 1; /* To hide the scrollbar of #Tab */
         }
         #MainEditors > div {
             height: 100%;
@@ -110,7 +109,6 @@
             margin: 0;
             width: calc(100% - 10px);
             padding-bottom: 20px;
-
             overflow-x: scroll;
             overflow-y: hidden;
         }
@@ -123,15 +121,20 @@
             display: inline-block;
             background-color: #202020;
             padding: 0 2px 0 2px;
-        }
-        #TabsContainer > div {
-            width:1000px;
+            white-space:nowrap; /* text content of anchor shouldn't be wrapped */
+            border-radius: 2px 2px 0 0;
         }
         #Tabs li > a {
             height: 28px;
         }
+        #Tabs li > *:not(input) {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
         #Tabs li.tab.focused {
-            background-color: #333333;
+            background-color: #303030;
         }
         #Tabs li > input {
             display: none;
@@ -148,6 +151,9 @@
         #Tabs a {
             text-decoration: none;
             color: #cccccc;
+        }
+        #Tabs li.focused > a {
+            color: #fafafa;
         }
         #Tabs a.hidden {
             display: none;

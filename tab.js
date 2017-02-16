@@ -1,5 +1,6 @@
 var aceEditor = require('./aceeditor.js');
 var throttle = require('lodash.throttle');
+var hamster = require('hamsterjs'); // cross-browser mouse wheel event handler http://monospaced.github.io/hamster.js/
 
 /**
  * Stores the state of tabs as key-value pairs.
@@ -62,14 +63,12 @@ var tabsRoot; // = document.getElementById("Tabs");
  * an input field at a label become visible, or an input field become invisible.
  */
 var updateTabsWidth = function() {
-    console.log("UPDATING TABS WIDTH");
     var width = 0;
     var li = document.getElementsByClassName("tab");
     for(var i = 0, l = li.length; i < l; i++) {
-        width += li[i].offsetWidth;
+        width += li[i].getBoundingClientRect().width; // should not round off subpixel values
     }
     document.getElementById("Tabs").lastElementChild.style.width = width + 5 + "px"; // add a little "grace"
-    console.log("UPDATED WIDTH: " + width);
 };
 
 /**
@@ -219,8 +218,6 @@ var initTabs = function() {
     });
 
     tabsRoot.addEventListener('blur', function(evt) {
-        console.log('blur EVENT');
-        console.log(evt);
         if(evt.target.tagName.toLowerCase() == "input") {
             updateTitle(evt.target);
         }
@@ -230,7 +227,47 @@ var initTabs = function() {
         focusTab(createTab());
         saveChange();
     });
+
+    hamster(tabsRoot).wheel(function(evt, delta, deltaX, deltaY){
+        smoothScroll(delta);
+    });
 };
+
+/**
+ * Scrolling must end after 0.3s from when the last event is received.
+ */
+var smoothScroll = (function() {
+    var lastFiredEvtTS = null;
+    var wayToGo = 0;
+    var duration = 300;
+    var rAFid;
+
+    function getStepAmount(wayToGo, progress) { // May use more complicated arithmetic function to get different effects
+        return wayToGo * progress / duration;
+    }
+
+    function step(currentTS) {
+        if(!lastFiredEvtTS) lastFiredEvtTS = currentTS;
+        var progress = currentTS - lastFiredEvtTS;
+        var stepAmount = getStepAmount(wayToGo, progress);
+
+        tabsRoot.scrollLeft -= stepAmount;
+        wayToGo -= stepAmount;
+
+        if(progress < duration) {
+            rAFid = window.requestAnimationFrame(step);
+	    }
+    }
+
+    var callback = function(delta) {
+        lastFiredEvtTS = null;
+        wayToGo += delta * (window.multiplier || 30);
+        window.cancelAnimationFrame(rAFid);
+        rAFid = window.requestAnimationFrame(step);
+    };
+
+    return callback;
+})();
 
 /**
  * Update the title string of a tab as a value of an input node.
@@ -362,6 +399,7 @@ var restorePrevSession = function() {
 module.exports = {
     initTabs: initTabs,
     createTab: createTab,
+    focusTab: focusTab,
     getCurrentEditor: getCurrentEditor,
     resizeTabs: resizeTabs,
     restorePrevSession: restorePrevSession
