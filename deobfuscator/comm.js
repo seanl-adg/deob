@@ -8,25 +8,27 @@ function throwError(errortext) {
     alert(errortext);
 }
 
-// [1,"2","a",.1,".1"] -> [1,2,false,false,false]
-// Maybe isNaN(Number(n)) would suffice
-function strictParseInt(n) {
-    var t = typeof n;
-    switch(t){
-        case "number":
-            break;
-        case "string":
-            if(isNaN(n)) {
-                return false;
-            }
-            n = +n;
-            break;
-        default:
-            return false;
-    }
-    // Now n is an integer, a float, null, an empty array, an array with a single integer element, etc.
-    // http://stackoverflow.com/questions/3885817/how-do-i-check-that-a-number-is-float-or-integer
-    return n === +n && n === (n|0) ? n : false;
+/**
+ * Validates if an accessed property of an Array
+ * is an index. If it is an array index, returns the property
+ * otherwise returns false.
+ *
+ * https://www.ecma-international.org/ecma-262/5.1/#sec-15.4
+ * A Quote from above:
+ *
+ * Array objects give special treatment to a certain class of property names.
+ * A property name P (in the form of a String value) is an array index
+ * if and only if ToString(ToUint32(P)) is equal to P
+ * and ToUint32(P) is not equal to 2^32−1
+ *
+ * Below implementation uses that bitwise operators implicitly convert
+ * objects using ToInt32. Because it is not ToUInt32, what follows will be
+ * incorrect if an accessed index is an integer >= 2^31,
+ * but such situation won't occur in practice.
+ */
+function isArrayIndex(n) {
+    var P = String(n);
+    return P === String(Math.abs(P|0)) ? P : false;
 }
 
 /**
@@ -227,7 +229,7 @@ var SandboxEval = function () {
 
 module.exports = { 
     throwError: throwError,
-    strictParseInt: strictParseInt,
+    isArrayIndex: isArrayIndex,
     isCondExpLiteral: isCondExpLiteral,
     concatStrings: concatStrings,
     beautify: beautify
