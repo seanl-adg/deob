@@ -32,10 +32,10 @@ var deobfuscator = (function() {
         var index;
         if(obj && obj.type == "MemberExpression" && obj.computed === true &&
         obj.object && obj.object.type == "Identifier" && obj.object.name == arrayName) {
-            //Must handle expressions such as a["1"] as well as a[1]
-            index = comm.strictParseInt(obj.property.value);
-
-            return index !== false && -1 < index && index < arrayElements.length ? index : false;
+            // It does not occur in practice, but we want to convert
+            // array["1"] and array[[1]] to its respective value as well.
+            index = comm.isArrayIndex(obj.property.value);
+            return index !== false && index < arrayElements.length ? index : false;
         }
         else {
             return false;
@@ -43,7 +43,8 @@ var deobfuscator = (function() {
     };
 
     var replace = function(index) {
-        var value = arrayElements[index].value, raw = arrayElements[index].raw;
+        var value = arrayElements[index].value;
+        var raw = arrayElements[index].raw;
         return {
             type: "Literal",
             value: value,

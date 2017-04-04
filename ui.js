@@ -3,7 +3,7 @@ var Split = require('split.js');
 
 function addGutters(){
     Split(['#Main', '#Right'], {
-        sizes: [25,75],
+        sizes: [45,55],
         gutterSize: 4,
         onDragEnd: resizeEditors
     });
@@ -17,80 +17,77 @@ function addGutters(){
 }
 
 /* Initialize editors */
-var ace = require('brace');
-require('brace/mode/javascript');
-require('brace/theme/monokai');
-require('brace/ext/searchbox');
+var aceEditor = require('./aceeditor.js');
+var tab = require('./tab.js');
 
-var deobfuscateObjProp = require('./objprop.js');
-var deobfuscateStringVars = require('./stringvars.js');
-var deobfuscateHexEncoded = require('./hexencoded.js');
-var deobfuscateEvalPacker = require('./evalpacker.js');
 
-var editable = ["Main", "InputData", "ToDeob"];
-var l = editable.length;
-Editors = new Array(l);
+var deobfuscateObjProp = require('./deobfuscator/objprop.js');
+var deobfuscateStringVars = require('./deobfuscator/stringvars.js');
+var deobfuscateHexEncoded = require('./deobfuscator/hexencoded.js');
+var deobfuscateEvalPacker = require('./deobfuscator/evalpacker.js');
+
+var inputData, toDeob; // ace editor instances
 
 function Do() {
     var result;
     var selectedmethod = document.querySelector('input[name="method"]:checked').value;
     switch(selectedmethod) {
         case "objprop":
-            result = deobfuscateObjProp.deobfuscate( Editors[1].getValue(), Editors[2].getValue() );
+            result = deobfuscateObjProp.deobfuscate( inputData.getValue(), toDeob.getValue() );
             break;
         case "stringvars":
-            result = deobfuscateStringVars.deobfuscate( Editors[1].getValue(), Editors[2].getValue() );
+            result = deobfuscateStringVars.deobfuscate( inputData.getValue(), toDeob.getValue() );
             break;
         case "hexencoded":
-            result = deobfuscateHexEncoded.deobfuscate( Editors[1].getValue(), Editors[2].getValue() );
+            result = deobfuscateHexEncoded.deobfuscate( inputData.getValue(), toDeob.getValue() );
             break;
         case "eval":
-            result = deobfuscateEvalPacker.deobfuscate( Editors[1].getValue(), Editors[2].getValue() );
+            result = deobfuscateEvalPacker.deobfuscate( inputData.getValue(), toDeob.getValue() );
     }
     if(result !== false) {
-        Editors[2].setValue(result);
+        toDeob.setValue(result);
     }
 }
 
-
 function initEditors() {
-    for(var i = 0; i < l; i++) {
-        Editors[i] = ace.edit(editable[i]);
-        Editors[i].setTheme("ace/theme/monokai");
-        Editors[i].getSession().setMode("ace/mode/javascript");
-        Editors[i].getSession().getMode().getTokenizer().$setMaxTokenCount(10000); // Increase syntax highlighting max value
-        Editors[i].setShowPrintMargin(false);
-        Editors[i].getSession().setUseWrapMode(true);
-        Editors[i].$blockScrolling = Infinity; // Remove annoying message
-    }
+    tab.initTabs();
+    inputData = aceEditor.initEditor("InputData");
+    toDeob = aceEditor.initEditor("ToDeob");
+    
+    // Fetch previous session if exists 
+    tab.restorePrevSession() || tab.focusTab(tab.createTab());
 
-    /* Attach click event listener */
     document.getElementById("deob").addEventListener('click', Do);
 }
 
 function resizeEditors() {
-    for(var i = 0; i < l; i++) {
-        Editors[i].getSession().getUseWrapMode() && Editors[i].resize();
-    }
+    inputData.getSession().getUseWrapMode() && inputData.resize();
+    toDeob.getSession().getUseWrapMode() && toDeob.resize();
+    tab.resizeTabs();
 }
 
-var comm = require('./comm.js');
+var comm = require('./deobfuscator/comm.js');
 
 function enableShortcuts() {
-    function getFocusedIndex(){
+    function getFocusedEditor() {
         var c = document.getElementsByClassName("ace_focus");
-        return c ? editable.indexOf(c[0].id) : false;
+        return c && c[0] && c[0].id ? aceEditor.getEditor(c[0].id) : false;
     }
 
     function toggleWrapCurrentEditor() {
-        var i = getFocusedIndex(),
-        b = Editors[i].getSession().getUseWrapMode();
-        i != -1 && Editors[i].getSession().setUseWrapMode(!b)
+        var i = getFocusedEditor();
+        if(i) {
+            var b = i.getSession().getUseWrapMode();
+            i.getSession().setUseWrapMode(!b);
+        }
     }
 
     function beautifyCurrentEditor() {
-        var i = getFocusedIndex();
-        i != -1 && Editors[i].setValue(comm.beautify(Editors[i].getValue()));
+        var i = getFocusedEditor();
+        
+        if(i){
+            i.setValue(comm.beautify(i.getValue()));
+        }
     }
 
     function onKeyDown(e) {
@@ -115,15 +112,15 @@ function enableShortcuts() {
                     break;
                 case 49:
                     e.preventDefault();
-                    Editors[0].focus();
+                    tab.getCurrentEditor().focus();
                     break;
                 case 50:
                     e.preventDefault();
-                    Editors[1].focus();
+                    inputData.focus();
                     break;
                 case 51:
                     e.preventDefault();
-                    Editors[2].focus();
+                    toDeob.focus();
                     break;
                 default:
                     return false;
@@ -153,4 +150,3 @@ window.addEventListener("DOMContentLoaded", function(){
 // ToDo: Parser error handling
 // improve concatString
 // style scrollbars
-// highlight matching parentheses
