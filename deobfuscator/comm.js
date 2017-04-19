@@ -167,14 +167,36 @@ function beautify(code){
     return escodegen.generate(concatStrings(esprima.parse(code)));
 }
 
+
+var Promise = require('bluebird');
+
 /**
  * Calls eval in a sandboxed iframe.
- * Usage: var seval = new SandboxEval(window.location.href);
- * seval.getResult(code);
+ * 
+ * var safeEval = new SandboxEval();
+ * // eval returns a Promise object
+ * safeEval.eval(code).then(function(result) {
+ *     console.log('eval result is ' + result);
+ * }).catch(function(reason) {
+ *     console.log('Cannot eval due to ' + reason);
+ * }
+ * 
+ * Message format:
+ * {
+ *     requestId: 123,
+ *     type: "sandboxEval",
+ *     script: "script code goes here"
+ * }
+ * 
+ * Answer format:
+ * {
+ *      "success": true or false
+ *      "error": description for error.
+ *      "return"
+ * }
  *  
  * @constructor
  */
-
 var SandboxEval = function () {
     // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
     function receiveAndPassBack(){
@@ -184,9 +206,20 @@ var SandboxEval = function () {
                 return;
             }
             try{
-                parent.postMessage({"success": 1, "result":_eval(evt.data)}, "%ORIGIN%");
+                console.log("RECEIVED A CODE: " + evt.data.code);
+                parent.postMessage({
+                    "requestId": evt.data.requestId,
+                    "success": true,
+                    "result": _eval(evt.data.code)
+                }, "%ORIGIN%");
             } catch(error) {
-                parent.postMessage({"success":0, "error": error}, "%ORIGIN%");
+                // postMessage can't send Error instances directly.
+                parent.postMessage({
+                    "requestId": evt.data.requestId,
+                    "success": false,
+                    "error": error.message,
+                    "original": evt.data
+                }, "%ORIGIN%");
             }
         }
         // Store eval in case of bad situations.
@@ -201,29 +234,55 @@ var SandboxEval = function () {
     var sandbox = document.createElement('iframe');
     sandbox.id ='sandbox';
     sandbox.sandbox ='allow-scripts'; //sandboxing
+    sandbox.style.cssText = "width:1px;height:1px;display:none;visibility:hidden";
 
     var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
     sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
+
+    var sandboxLoaded = new Promise(function(resolve, reject) {
+        sandbox.onload = function() {
+            resolve("success");
+        }
+        sandbox.onerror = function(er) { reject(er);};
+    });
+
     document.body.appendChild(sandbox);
 
-    // register a local variable that we store the returned result.
-    var result;
+    var requestId = 0;
 
-    function returnResult(evt) {
-        if(evt.success == 1) {
-            resolve(evt.data.result);
-        }
-        else if(evt.sucess == 0) {
-            reject(evt.data.error);
-        }
-        else {
-            reject(Error("Internal error."));
-        }
-    }
+    this.eval = function(code) {
+        return sandboxLoaded.catch(function(error){
+            ;
+        }).then(function() {
+            return new Promise(function(resolve, reject) {
+                var thisId = requestId;
+                sandbox.contentWindow.postMessage({
+                    requestId: thisId,
+                    type: 'sandboxEval',
+                    code: code
+                }, "*");
+                requestId++;
+                function receiveMessage(event) {
+                    if(event.data.requestId == thisId) {
+                        if(event.data.success) {
+                            resolve(event.data.result);
+                        }
+                        else if(event.data.error) {
+                            reject(event.data.error);
+                        }
+                        else {
+                            reject(Error("Internal error."));
+                        }
+                        window.removeEventListener("message", receiveMessage);
+                    }
+                }
+                window.addEventListener("message", receiveMessage);
+            });
+        });
+    };
 
-    this.getResult = function(code) {
-        result = undefined;
-        //....
+    this.destroy = function() {
+        document.body.removeChild(sandbox);
     };
 };
 
@@ -232,5 +291,6 @@ module.exports = {
     isArrayIndex: isArrayIndex,
     isCondExpLiteral: isCondExpLiteral,
     concatStrings: concatStrings,
-    beautify: beautify
+    beautify: beautify,
+    SandboxEval: SandboxEval
 };

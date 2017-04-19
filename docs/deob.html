@@ -231,34 +231,31 @@
             </div>
             
         </nav>
-        <div id="MainEditors">
-
-
-        </div>
-        
-        <!--function foo(items) {
-    var x = "All this is syntax highlighted";
-    return x;
-} --></div>
+        <div id="MainEditors"></div>
+    </div>
     <div id="Right">
         <div id="RightTop">
             <div id="Radio">
                 <label>
-                        <input type="radio" name="method" value="objprop" checked>
-                        <i>var a = {'a':"ABC", 'b':"DEF"};</i>
-                    </label>
+                    <input type="radio" name="method" value="objprop" checked>
+                    <i>var a = {'a':"ABC", 'b':"DEF"};</i>
+                </label>
                 <label>
-                        <input type="radio" name="method" value="stringvars">
-                        <i>var a = "ABC", b = "DEF";</i>
-                    </label>
+                    <input type="radio" name="method" value="stringvars">
+                    <i>var a = "ABC", b = "DEF";</i>
+                </label>
                 <label>			
-                        <input type="radio" name="method" value="hexencoded">
-                        <i>var a = ["ABC", "DEF", ...];</i>
-                    </label>
+                    <input type="radio" name="method" value="hexencoded">
+                    <i>var a = ["ABC", "DEF", ...];</i>
+                </label>
                 <label>
-                        <input type="radio" name="method" value="eval">
-                        <i>eval(function(p,a,c,k,e,d)..);</i>
-                    </label>
+                    <input type="radio" name="method" value="eval">
+                    <i>eval(function(p,a,c,k,e,d)..);</i>
+                </label>
+                <label>
+                    <input type="radio" name="method" value="repfncall">
+                    <i>a.b.c(/.*/) == ABC</i>
+                </label>
                 <button type="button" id="deob">Convert</button>
                 <div id="info"> </div>
             </div>
