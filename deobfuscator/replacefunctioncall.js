@@ -12,8 +12,11 @@ var Promise = require('bluebird');
  * 
  */
 var deobfuscator = (function(){
-    var dic = [];
+    // Will be assigned to values during a validateInput call
+    var replaceDataArray = []; // replaceDataArray
 
+    // validates input, populates replaceDataArray. Its syntax is not yet settled.
+    // currently, a['b'].c() == window.atob will replace e.g. a.b.c('YQ=='), d.a.b.c('YQ=='), d['a']['b']['c']('YQ==') to 'a'.
     var validateInput = function(ast) {
         var len = ast.body.length;
         var i;
@@ -27,6 +30,7 @@ var deobfuscator = (function(){
                 var right = statement.expression.right;
                 if(left.type == "CallExpression") {
                     var args = [];
+                    // parses arguments passed in 
                     for(var j = 0, l = left.arguments.length; j < l; j++) {
                         if(left.arguments[j].type=="Literal"&&left.arguments[j].regex) {
                             args.push((new RegExp(left.arguments[j].regex)));
@@ -38,7 +42,6 @@ var deobfuscator = (function(){
                             return false;
                         }
                     }
-                                       
                     var functionDecCode = escodegen.generate({
                         "type": "Program",
                         "body": [
@@ -60,12 +63,12 @@ var deobfuscator = (function(){
                     });
 
                     var sandbox = new comm.SandboxEval();
-                    sandbox.eval(functionDecCode)
+                    sandbox.eval(functionDecCode);
 
-                    dic.push({
-                        callee: left.callee,
+                    replaceDataArray.push({
+                        callee: left.callee, // alternatively, we may store callees in a compact form after parsing
                         arguments: args,
-                        evaler: sandbox
+                        evalProvider: sandbox
                     });
                 }
             }
@@ -77,11 +80,9 @@ var deobfuscator = (function(){
     };
 
     var condition = function(node) {
-        if(node.type != "CallExpression") {
-            return false;
-        }
+        if(node.type != "CallExpression") return false;
 
-        var tmp = dic.map(function(el, index){
+        var replaceCandidates = replaceDataArray.map(function(el, index){
             return {
                 o: el.callee,
                 i: index
@@ -91,7 +92,7 @@ var deobfuscator = (function(){
 
         while(_callee.type == "MemberExpression") {
             try {
-                tmp = tmp.filter(function(el) {
+                replaceCandidates = replaceCandidates.filter(function(el) {
                     var nname = _callee.computed ? _callee.property.value : _callee.property.name;
                     var dname;
                     if(el.o.type == "MemberExpression") {
@@ -109,15 +110,11 @@ var deobfuscator = (function(){
                 });
             }
             catch(i) {
-                if(typeof i == 'number') {
-                    return i;
-                }
-                else {
-                    throw i;
-                }
+                if(typeof i == 'number') return i;
+                else throw i;
             }
          
-            tmp = tmp.map(function(el) {
+            replaceCandidates = replaceCandidates.map(function(el) {
                 return {
                     o: el.o.object,
                     i: el.i
@@ -129,14 +126,15 @@ var deobfuscator = (function(){
         if(_callee.type != "Identifier") {
             return false;
         }
-        for(var i = 0, l = tmp.length; i < l; i++) {
-            if(_callee.name == tmp[i].o.name) {
-                return tmp[i].i;
+        for(var i = 0, l = replaceCandidates.length; i < l; i++) {
+            if(_callee.name == replaceCandidates[i].o.name) {
+                return replaceCandidates[i].i;
             }
         }
         return false;
     };
 
+    // Returns a promise that resolves with a node to be replaced. Returns undefined when an eval call fails.
     var replace = function(index, node) {
         var evalStr = escodegen.generate({
             "type": "Program",
@@ -154,7 +152,7 @@ var deobfuscator = (function(){
                 }
             ]
         });
-        return dic[index].evaler.eval(evalStr).catch(function(error) {
+        return replaceDataArray[index].evalProvider.eval(evalStr).catch(function(error) {
                 console.warn("One function call was ignored due to an error: " + error);
                 return Promise.resolve(undefined);
             }).then(function(result) {
@@ -172,18 +170,15 @@ var deobfuscator = (function(){
             comm.throwError("Unexpected input.");
             return false;
         }
-
         var codeExpr = esprima.parse(code);
 
         var promises = [];
-        var promise;
 
         codeExpr = estraverse.replace(codeExpr, {
             enter: function(node) {
-                var index = condition(node);
-                if(index !== false) {
-                    
-                    promises.push(replace(index, node));
+                var i = condition(node);
+                if(i !== false) {
+                    promises.push(replace(i, node));
                     return {
                         type: "TEMP_ASYNC",
                         value: promises.length - 1,
@@ -191,31 +186,28 @@ var deobfuscator = (function(){
                     };
                 }
             },
-            keys: {
-                "TEMP_ASYNC": []
-            }
+            keys: { "TEMP_ASYNC": [] }
         });
 
-        return Promise.all(promises).then(function(evaledResults) {
+        return Promise.all(promises).then(function(evaluatedASTNodes) {
             codeExpr = estraverse.replace(codeExpr, {
                 enter: function(node) {
                     if(node.type == "TEMP_ASYNC") {
-                        return evaledResults[node.value] || node.original; // Recover original when an eval has failed.
+                        return evaluatedASTNodes[node.value] || node.original; // Recover original when an eval has failed.
                     }
                 },
-                keys: {
-                    "TEMP_ASYNC": []
-                }
+                keys: { "TEMP_ASYNC": [] }
             });
-            var sandbox = this;
 
-            dic.forEach(function(el) {
-                el.evaler.destroy();
+            // clear memory?
+            /*
+            replaceDataArray.forEach(function(el) {
+                el.evalProvider.destroy();
             });
-            dic = [];
+            */
+            replaceDataArray = [];
 
-            return escodegen.generate(comm.concatStrings(codeExpr));           
-            
+            return escodegen.generate(comm.concatStrings(codeExpr));
         }, function(){ /* error handling here */});
     };
 

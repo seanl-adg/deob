@@ -30,7 +30,6 @@ var deobfuscateFunctionCall = require('./deobfuscator/replacefunctioncall.js');
 var inputData, toDeob; // ace editor instances
 
 function setVal(result) {
-    console.log(result);
     if(result !== false) {
         toDeob.setValue(result);
     }

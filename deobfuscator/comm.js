@@ -206,7 +206,6 @@ var SandboxEval = function () {
                 return;
             }
             try{
-                console.log("RECEIVED A CODE: " + evt.data.code);
                 parent.postMessage({
                     "requestId": evt.data.requestId,
                     "success": true,
@@ -235,33 +234,27 @@ var SandboxEval = function () {
     sandbox.id ='sandbox';
     sandbox.sandbox ='allow-scripts'; //sandboxing
     sandbox.style.cssText = "width:1px;height:1px;display:none;visibility:hidden";
-
     var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
     sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
-
     var sandboxLoaded = new Promise(function(resolve, reject) {
         sandbox.onload = function() {
             resolve("success");
         }
         sandbox.onerror = function(er) { reject(er);};
     });
-
     document.body.appendChild(sandbox);
-
-    var requestId = 0;
 
     this.eval = function(code) {
         return sandboxLoaded.catch(function(error){
             ;
         }).then(function() {
             return new Promise(function(resolve, reject) {
-                var thisId = requestId;
+                var thisId = (new Date()).getTime() * 10 + Math.floor(Math.random() * 10); // Or should I store request Ids in a closure and increase it like 1,2,3,4..?
                 sandbox.contentWindow.postMessage({
                     requestId: thisId,
                     type: 'sandboxEval',
                     code: code
                 }, "*");
-                requestId++;
                 function receiveMessage(event) {
                     if(event.data.requestId == thisId) {
                         if(event.data.success) {
