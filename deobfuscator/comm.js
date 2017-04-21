@@ -181,103 +181,95 @@ var Promise = require('bluebird');
  *     console.log('Cannot eval due to ' + reason);
  * }
  * 
- * Message format:
- * {
- *     requestId: 123,
- *     type: "sandboxEval",
- *     script: "script code goes here"
- * }
- * 
- * Answer format:
- * {
- *      "success": true or false
- *      "error": description for error.
- *      "return"
- * }
- *  
  * @constructor
  */
-var SandboxEval = function () {
-    // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
-    function receiveAndPassBack(){
-        function evalScript(evt){
-            //Check that the message came from where we expect.
-            if(evt.origin != "%ORIGIN%") {
-                return;
-            }
-            try{
-                parent.postMessage({
-                    "requestId": evt.data.requestId,
-                    "success": true,
-                    "result": _eval(evt.data.code)
-                }, "%ORIGIN%");
-            } catch(error) {
-                // postMessage can't send Error instances directly.
-                parent.postMessage({
-                    "requestId": evt.data.requestId,
-                    "success": false,
-                    "error": error.message,
-                    "original": evt.data
-                }, "%ORIGIN%");
-            }
-        }
-        // Store eval in case of bad situations.
-        _eval = window.eval;
-
-        window.addEventListener("message", evalScript);
-    }
-
-    // Create an iframe.
-    // Can't use contentWindow.document.write in a sandboxed iframe,
-    // so using data:text/html.
-    var sandbox = document.createElement('iframe');
-    sandbox.id ='sandbox';
-    sandbox.sandbox ='allow-scripts'; //sandboxing
-    sandbox.style.cssText = "width:1px;height:1px;display:none;visibility:hidden";
-    var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
-    sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
-    var sandboxLoaded = new Promise(function(resolve, reject) {
-        sandbox.onload = function() {
-            resolve("success");
-        }
-        sandbox.onerror = function(er) { reject(er);};
-    });
-    document.body.appendChild(sandbox);
-
-    this.eval = function(code) {
-        return sandboxLoaded.catch(function(error){
-            ;
-        }).then(function() {
-            return new Promise(function(resolve, reject) {
-                var thisId = (new Date()).getTime() * 10 + Math.floor(Math.random() * 10); // Or should I store request Ids in a closure and increase it like 1,2,3,4..?
-                sandbox.contentWindow.postMessage({
-                    requestId: thisId,
-                    type: 'sandboxEval',
-                    code: code
-                }, "*");
-                function receiveMessage(event) {
-                    if(event.data.requestId == thisId) {
-                        if(event.data.success) {
-                            resolve(event.data.result);
-                        }
-                        else if(event.data.error) {
-                            reject(event.data.error);
-                        }
-                        else {
-                            reject(Error("Internal error."));
-                        }
-                        window.removeEventListener("message", receiveMessage);
-                    }
+var SandboxEval = (function() {
+    var requestId = 0;
+    return function() {
+        // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
+        function receiveAndPassBack(){
+            function evalScript(evt){
+                //Check that the message came from where we expect.
+                if(evt.origin != "%ORIGIN%") {
+                    return;
                 }
-                window.addEventListener("message", receiveMessage);
-            });
-        });
-    };
+                try{
+                    parent.postMessage({
+                        "requestId": evt.data.requestId,
+                        "type": "SandboxEval",
+                        "success": true,
+                        "result": _eval(evt.data.code)
+                    }, "%ORIGIN%");
+                } catch(error) {
+                    // postMessage can't send Error instances directly.
+                    parent.postMessage({
+                        "requestId": evt.data.requestId,
+                        "type": "SandboxEval",
+                        "success": false,
+                        "error": error.message,
+                        "original": evt.data
+                    }, "%ORIGIN%");
+                }
+            }
+            // Store eval in case of bad situations.
+            _eval = window.eval;
 
-    this.destroy = function() {
-        document.body.removeChild(sandbox);
+            window.addEventListener("message", evalScript);
+        }
+
+        // Create an iframe.
+        // Can't use contentWindow.document.write in a sandboxed iframe,
+        // so using data:text/html.
+        var sandbox = document.createElement('iframe');
+        sandbox.id ='sandbox';
+        sandbox.sandbox ='allow-scripts'; //sandboxing
+        sandbox.style.cssText = "width:1px;height:1px;display:none;visibility:hidden";
+        var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
+        sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
+        var sandboxLoaded = new Promise(function(resolve, reject) {
+            sandbox.onload = function() {
+                resolve("success");
+            }
+            sandbox.onerror = function(er) { reject(er);};
+        });
+        document.body.appendChild(sandbox);
+
+        this.eval = function(code) {
+            return sandboxLoaded.catch(function(error){
+                console.warn("safe eval has been failed to initialize.");
+            }).then(function() {
+                return new Promise(function(resolve, reject) {
+                    var thisId = requestId;
+                    requestId++;
+                    sandbox.contentWindow.postMessage({
+                        requestId: thisId,
+                        type: 'sandboxEval',
+                        code: code
+                    }, "*");
+                    function receiveMessage(event) {
+                        if(event.data.requestId == thisId) {
+                            if(event.data.success) {
+                                resolve(event.data.result);
+                            }
+                            else if(event.data.error) {
+                                reject(event.data.error);
+                            }
+                            else {
+                                reject(Error("Internal error."));
+                            }
+                            window.removeEventListener("message", receiveMessage);
+                        }
+                    }
+                    window.addEventListener("message", receiveMessage);
+                });
+            });
+        };
+
+        this.destroy = function() {
+            document.body.removeChild(sandbox);
+        };
     };
-};
+})();
 
 module.exports = { 
     throwError: throwError,

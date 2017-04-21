@@ -13,7 +13,7 @@ var Promise = require('bluebird');
  */
 var deobfuscator = (function(){
     // Will be assigned to values during a validateInput call
-    var replaceDataArray = []; // replaceDataArray
+    var replaceDataArray = [], calleeArray = [];
 
     // validates input, populates replaceDataArray. Its syntax is not yet settled.
     // currently, a['b'].c() == window.atob will replace e.g. a.b.c('YQ=='), d.a.b.c('YQ=='), d['a']['b']['c']('YQ==') to 'a'.
@@ -66,10 +66,15 @@ var deobfuscator = (function(){
                     sandbox.eval(functionDecCode);
 
                     replaceDataArray.push({
-                        callee: left.callee, // alternatively, we may store callees in a compact form after parsing
                         arguments: args,
                         evalProvider: sandbox
                     });
+                    
+                    calleeArray.push({
+                        ast: left.callee,
+                        index: replaceDataArray.length - 1
+                    });
+
                 }
             }
             else {
@@ -82,53 +87,42 @@ var deobfuscator = (function(){
     var condition = function(node) {
         if(node.type != "CallExpression") return false;
 
-        var replaceCandidates = replaceDataArray.map(function(el, index){
-            return {
-                o: el.callee,
-                i: index
-            };
-        });
-        var _callee = node.callee;
+        var callee = node.callee, replaceCandidates = calleeArray, nextCandidates;
 
-        while(_callee.type == "MemberExpression") {
-            try {
-                replaceCandidates = replaceCandidates.filter(function(el) {
-                    var nname = _callee.computed ? _callee.property.value : _callee.property.name;
-                    var dname;
-                    if(el.o.type == "MemberExpression") {
-                        dname = el.o.computed ? el.o.property.value : el.o.property.name;
+        while(callee.type == "MemberExpression") {
+            nextCandidates = [];
+            for(var i = 0, l = replaceCandidates.length; i < l; i++) {
+                var candidate = replaceCandidates[i];
+                var calleePropName = callee.computed ? callee.property.value: callee.property.name;
+                var candidatePropName;
+                if(candidate.ast.type == "MemberExpression") {
+                    candidatePropName = candidate.ast.computed ? candidate.ast.property.value : candidate.ast.property.name;
+                    if(calleePropName == candidatePropName) {
+                        nextCandidates.push({
+                            ast: candidate.ast.object,
+                            index: candidate.index
+                        });
                     }
-                    else if(el.o.type == "Identifier") {
-                        dname = el.o.name;
-                        if(nname == dname) {
-                            // ToDo: Regex Check here
-                            throw(el.i);
-                        }
-                        return false;
+                }
+                else if(candidate.ast.type == "Identifier") {
+                    candidatePropName = candidate.ast.name;
+                    if(calleePropName == candidatePropName) {
+                        //ToDo: regex check here
+                        return candidate.index;
                     }
-                    return dname == nname;
-                });
+                }
             }
-            catch(i) {
-                if(typeof i == 'number') return i;
-                else throw i;
-            }
-         
-            replaceCandidates = replaceCandidates.map(function(el) {
-                return {
-                    o: el.o.object,
-                    i: el.i
-                };
-            });
-            _callee = _callee.object;
+            callee = callee.object;
+            replaceCandidates = nextCandidates;
         }
 
-        if(_callee.type != "Identifier") {
+        if(callee.type != "Identifier") {
             return false;
         }
         for(var i = 0, l = replaceCandidates.length; i < l; i++) {
-            if(_callee.name == replaceCandidates[i].o.name) {
-                return replaceCandidates[i].i;
+            if(callee.name == replaceCandidates[i].ast.name) {
+                //ToDo: regex check here
+                return replaceCandidates[i].index;
             }
         }
         return false;
@@ -200,12 +194,11 @@ var deobfuscator = (function(){
             });
 
             // clear memory?
-            /*
-            replaceDataArray.forEach(function(el) {
-                el.evalProvider.destroy();
-            });
-            */
+            for(var i = 0, l=replaceDataArray.length; i < l; i++) {
+                replaceDataArray[i].evalProvider.destroy();
+            }
             replaceDataArray = [];
+            calleeArray = [];
 
             return escodegen.generate(comm.concatStrings(codeExpr));
         }, function(){ /* error handling here */});
