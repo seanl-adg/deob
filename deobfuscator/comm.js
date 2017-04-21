@@ -167,70 +167,115 @@ function beautify(code){
     return escodegen.generate(concatStrings(esprima.parse(code)));
 }
 
+
+var Promise = require('bluebird');
+
 /**
  * Calls eval in a sandboxed iframe.
- * Usage: var seval = new SandboxEval(window.location.href);
- * seval.getResult(code);
- *  
+ * 
+ * var safeEval = new SandboxEval();
+ * // eval returns a Promise object
+ * safeEval.eval(code).then(function(result) {
+ *     console.log('eval result is ' + result);
+ * }).catch(function(reason) {
+ *     console.log('Cannot eval due to ' + reason);
+ * }
+ * 
  * @constructor
  */
-
-var SandboxEval = function () {
-    // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
-    function receiveAndPassBack(){
-        function evalScript(evt){
-            //Check that the message came from where we expect.
-            if(evt.origin != "%ORIGIN%") {
-                return;
+var SandboxEval = (function() {
+    var requestId = 0;
+    return function() {
+        // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
+        function receiveAndPassBack(){
+            function evalScript(evt){
+                //Check that the message came from where we expect.
+                if(evt.origin != "%ORIGIN%") {
+                    return;
+                }
+                try{
+                    parent.postMessage({
+                        "requestId": evt.data.requestId,
+                        "type": "SandboxEval",
+                        "success": true,
+                        "result": _eval(evt.data.code)
+                    }, "%ORIGIN%");
+                } catch(error) {
+                    // postMessage can't send Error instances directly.
+                    parent.postMessage({
+                        "requestId": evt.data.requestId,
+                        "type": "SandboxEval",
+                        "success": false,
+                        "error": error.message,
+                        "original": evt.data
+                    }, "%ORIGIN%");
+                }
             }
-            try{
-                parent.postMessage({"success": 1, "result":_eval(evt.data)}, "%ORIGIN%");
-            } catch(error) {
-                parent.postMessage({"success":0, "error": error}, "%ORIGIN%");
+            // Store eval in case of bad situations.
+            _eval = window.eval;
+
+            window.addEventListener("message", evalScript);
+        }
+
+        // Create an iframe.
+        // Can't use contentWindow.document.write in a sandboxed iframe,
+        // so using data:text/html.
+        var sandbox = document.createElement('iframe');
+        sandbox.id ='sandbox';
+        sandbox.sandbox ='allow-scripts'; //sandboxing
+        sandbox.style.cssText = "width:1px;height:1px;display:none;visibility:hidden";
+        var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
+        sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
+        var sandboxLoaded = new Promise(function(resolve, reject) {
+            sandbox.onload = function() {
+                resolve("success");
             }
-        }
-        // Store eval in case of bad situations.
-        _eval = window.eval;
+            sandbox.onerror = function(er) { reject(er);};
+        });
+        document.body.appendChild(sandbox);
 
-        window.addEventListener("message", evalScript);
-    }
+        this.eval = function(code) {
+            return sandboxLoaded.catch(function(error){
+                console.warn("safe eval has been failed to initialize.");
+            }).then(function() {
+                return new Promise(function(resolve, reject) {
+                    var thisId = requestId;
+                    requestId++;
+                    sandbox.contentWindow.postMessage({
+                        requestId: thisId,
+                        type: 'sandboxEval',
+                        code: code
+                    }, "*");
+                    function receiveMessage(event) {
+                        if(event.data.requestId == thisId) {
+                            if(event.data.success) {
+                                resolve(event.data.result);
+                            }
+                            else if(event.data.error) {
+                                reject(event.data.error);
+                            }
+                            else {
+                                reject(Error("Internal error."));
+                            }
+                            window.removeEventListener("message", receiveMessage);
+                        }
+                    }
+                    window.addEventListener("message", receiveMessage);
+                });
+            });
+        };
 
-    // Create an iframe.
-    // Can't use contentWindow.document.write in a sandboxed iframe,
-    // so using data:text/html.
-    var sandbox = document.createElement('iframe');
-    sandbox.id ='sandbox';
-    sandbox.sandbox ='allow-scripts'; //sandboxing
-
-    var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
-    sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
-    document.body.appendChild(sandbox);
-
-    // register a local variable that we store the returned result.
-    var result;
-
-    function returnResult(evt) {
-        if(evt.success == 1) {
-            resolve(evt.data.result);
-        }
-        else if(evt.sucess == 0) {
-            reject(evt.data.error);
-        }
-        else {
-            reject(Error("Internal error."));
-        }
-    }
-
-    this.getResult = function(code) {
-        result = undefined;
-        //....
+        this.destroy = function() {
+            document.body.removeChild(sandbox);
+        };
     };
-};
+})();
 
 module.exports = { 
     throwError: throwError,
     isArrayIndex: isArrayIndex,
     isCondExpLiteral: isCondExpLiteral,
     concatStrings: concatStrings,
-    beautify: beautify
+    beautify: beautify,
+    SandboxEval: SandboxEval
 };

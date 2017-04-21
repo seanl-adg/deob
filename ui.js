@@ -25,27 +25,35 @@ var deobfuscateObjProp = require('./deobfuscator/objprop.js');
 var deobfuscateStringVars = require('./deobfuscator/stringvars.js');
 var deobfuscateHexEncoded = require('./deobfuscator/hexencoded.js');
 var deobfuscateEvalPacker = require('./deobfuscator/evalpacker.js');
+var deobfuscateFunctionCall = require('./deobfuscator/replacefunctioncall.js');
 
 var inputData, toDeob; // ace editor instances
+
+function setVal(result) {
+    if(result !== false) {
+        toDeob.setValue(result);
+    }
+}
 
 function Do() {
     var result;
     var selectedmethod = document.querySelector('input[name="method"]:checked').value;
     switch(selectedmethod) {
         case "objprop":
-            result = deobfuscateObjProp.deobfuscate( inputData.getValue(), toDeob.getValue() );
-            break;
+            setVal(deobfuscateObjProp.deobfuscate( inputData.getValue(), toDeob.getValue() ));
+            return;
         case "stringvars":
-            result = deobfuscateStringVars.deobfuscate( inputData.getValue(), toDeob.getValue() );
-            break;
+            setVal(deobfuscateStringVars.deobfuscate( inputData.getValue(), toDeob.getValue() ));
+            return;
         case "hexencoded":
-            result = deobfuscateHexEncoded.deobfuscate( inputData.getValue(), toDeob.getValue() );
-            break;
+            setVal(deobfuscateHexEncoded.deobfuscate( inputData.getValue(), toDeob.getValue() ));
+            return;
         case "eval":
-            result = deobfuscateEvalPacker.deobfuscate( inputData.getValue(), toDeob.getValue() );
-    }
-    if(result !== false) {
-        toDeob.setValue(result);
+            setVal(deobfuscateEvalPacker.deobfuscate( inputData.getValue(), toDeob.getValue() ));
+            return;
+        case "repfncall":
+            deobfuscateFunctionCall.deobfuscateAsync( inputData.getValue(), toDeob.getValue() ).then(setVal);
+            return;
     }
 }
 
