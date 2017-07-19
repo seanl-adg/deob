@@ -80,157 +80,255 @@ function binaryOp(l, o, r) {
     }
 }
 
-// Checks whether a conditional expression eventually boils down to a literal.
-// If true, returns the ast of the evaluated literal.
-function isCondExpLiteral(obj) {
-    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "Literal"];
-    var check = true;
-    obj = estraverse.replace(obj, {
-        enter: function(node,parentNode) {
-            // If it has 'type', check if it is allowed.
-            // "ExpressionStatement", "SequenceExpression", "BinaryExpression", "Literal"
-            if(node.type && allowedTypes.indexOf(node.type) == -1) {
-                check = false;
-                this.break();
-            }
-            // Skip nodes that we don't even need to check.
-            if(parentNode.type == "ConditionalExpression") {
-                if(parentNode.test.value) {   // We are relying on the fact that the traverser always traverse "test" node at the earliest.
-                    this.__current.path == "alternate" && this.remove(); // If an element is skipped via this.skip(), leave callback is still called. 
-                }
-                else {
-                    this.__current.path == "consequent" && this.remove();
-                }
-            }
-        },
-        // We've already parsed it, so we do not bother with escodegen and eval and reduce the expression by our own.
-        leave: function(node,parentNode){
-            // when leaving Literal, do nothing.
-            // when leaving other nodes, it should be possible to evaluate it.
-            switch(node.type) {
-                case "SequenceExpression":
-                    return node.expressions[node.expressions.length - 1];
-                case "ConditionalExpression":
-                    return node.test.value ? node.consequent : node.alternate;
-                case "BinaryExpression":
-                    var tf = binaryOp(node.left.value, node.operator, node.right.value);
-                    return {
-                        type: "Literal",
-                        value: tf,
-                        raw: typeof tf == "string" ? "\"" + tf + "\"" : String(tf)
-                    };
-            }
-        }
-    });
-    
-    return check ? obj : false;
+/**
+ * Although never have seen an occurence, we should support evaluating unary expressions.
+ */
+function unaryOp(o, x) {
+    switch (o) {
+        case '+':
+            return +x;
+        case '-':
+            return -x;
+        case '~':
+            return ~x;
+        case '!':
+            return !x;
+        case 'delete':
+            return true;
+        case 'void':
+            return undefined;
+        case 'typeof':
+            return typeof x;
+    }
 }
+
+function isAddition(node) {
+    return node.type == "BinaryExpression" && node.operator == "+";
+}
+
+function isStringLiteral(node) {
+    return node.type == "Literal" && typeof node.value == "string";
+}
+
 /**
  * Gets an abstract syntax tree of a Javascript code,
  * tries to concatenate strings addition expressions such as "a" + "b" + "c" in the original Javascript code
  * so that it becomes "abc", then returns the transformed ast.
- * It does not currently concatenate when the first argument is not a string literal,
- * like a + "b" + "c".
  * 
  * @param ast
  * @return ast
  */
 function concatStrings(ast) {
+    var prevNode = null;
+
     estraverse.replace(ast, {
         enter: function(node) {
-            if(node.type == "BinaryExpression" && node.operator == "+" && node.left.type == "Literal" && node.right.type == "Literal") {
-                var conc = node.left.value + node.right.value;
-                return {
-                    type: "Literal",
-                    value: conc
-                    //raw: "\"" + conc + "\""
-                };
-                // should check the parent node again
-            }
+            if(isAddition(node)) {
+                if(isStringLiteral(node.left)) {
+                    if(prevNode !== null) {
+                        prevNode.value += node.left.value;
+                        return node.right;
+                    }
+                    prevNode = node.left;
+                } else if(!isAddition(node.left)) { prevNode = null; }
+            } else if(!isStringLiteral(node) && prevNode !== null) { prevNode = null; }
         },
-        leave: function(node, parentNode) {
-            if(parentNode.type == "BinaryExpression" && node.type == "Literal" && parentNode.operator == "+" && parentNode.left.type == "Literal" && parentNode.right.type == "Literal") {
-                var conc = parentNode.left.value + parentNode.right.value;
-                parentNode.type = "Literal";
-                parentNode.value = conc;
-                delete parentNode.left;
-                delete parentNode.right;
-                delete parentNode.operator;
+        leave: function(node) {
+            if(isAddition(node)) {
+                if(isStringLiteral(node.right)) {
+                    if(prevNode !== null) {
+                        prevNode.value += node.right.value;
+                        return node.left;
+                    }
+                    prevNode = node.right;
+                } else if(!isAddition(node.right)) { prevNode = null; }
             }
+            else if(!isStringLiteral(node) && prevNode !== null) { prevNode = null; }
         }
     });
 
     return ast;
 }
 
+/**
+ * Checks whether a given expression can be deterministically reduced to a single literal.
+ * Receives an AST tree of an expression, mutates the ast returns the reduced AST of a literal when it can be reduced.
+ * Otherwise, return false.
+ * Note: As a side effect, it mutates the ast partially.
+ * @param {*} ast
+ * @return {boolean|ast}
+ */
+function reduceLiterals(ast) {
+    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "UnaryExpression", "Literal"];
+    var check = true;
+    
+    // Using estraverse.replace to check the root node.
+    ast = estraverse.replace(ast, {
+        enter: function(node, parentNode) {
+            if (parentNode) {
+                switch (parentNode.type) {
+                    case "SequenceExpression":
+                        if (parentNode.expressions.indexOf(node) !== parentNode.expressions.length - 1) { this.remove(); }
+                        break;
+                    case "ConditionalExpression":
+                        if (this.__current.path != "test") {
+                            if (parentNode.test.value) {
+                                // Skip is safer, removing it results in an invalid AST and it may stay if the call returns false.
+                                this.__current.path == "alternate" && this.skip();
+                            } else {
+                                this.__current.path == "consequent" && this.skip();
+                            }
+                        }
+                        break;
+                }
+            }
+            if(node && node.type && allowedTypes.indexOf(node.type) == -1) {
+                check = false;
+                this.break();
+            }
+        },
+        leave: function(node, parentNode) {
+            var newNode;
+            switch(node.type) {
+                case "SequenceExpression":
+                    return node.expressions[node.expressions.length - 1];
+                case "ConditionalExpression":
+                    return node.test.value ? node.consequent : node.alternate;
+                case "BinaryExpression":
+                    return {
+                        type: "Literal",
+                        value: binaryOp(node.left.value, node.operator, node.right.value)
+                    };
+                case "UnaryExpression":
+                    return {
+                        type: "Literal",
+                        value: unaryOp(node.operator, node.argument.value)
+                    };
+                case "Literal":
+                    break;
+            }
+        }
+    });
+
+    return check ? ast : false;
+}
+
+// ToDo: incorporate concatStrings and reduceLiterals in a single call to be used in beautify.
+
 function beautify(code){
     return escodegen.generate(concatStrings(esprima.parse(code)));
 }
 
+
+var Promise = require('bluebird');
+
 /**
  * Calls eval in a sandboxed iframe.
- * Usage: var seval = new SandboxEval(window.location.href);
- * seval.getResult(code);
- *  
+ * 
+ * var safeEval = new SandboxEval();
+ * // eval returns a Promise object
+ * safeEval.eval(code).then(function(result) {
+ *     console.log('eval result is ' + result);
+ * }).catch(function(reason) {
+ *     console.log('Cannot eval due to ' + reason);
+ * }
+ * 
  * @constructor
  */
-
-var SandboxEval = function () {
-    // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
-    function receiveAndPassBack(){
-        function evalScript(evt){
-            //Check that the message came from where we expect.
-            if(evt.origin != "%ORIGIN%") {
-                return;
+var SandboxEval = (function() {
+    var requestId = 0;
+    return function() {
+        // The below function is a setup to run in an iframe. Receives messages, evaluates it, and pass back the result.
+        function receiveAndPassBack(){
+            function evalScript(evt){
+                //Check that the message came from where we expect.
+                if(evt.origin != "%ORIGIN%") {
+                    return;
+                }
+                try{
+                    parent.postMessage({
+                        "requestId": evt.data.requestId,
+                        "type": "SandboxEval",
+                        "success": true,
+                        "result": _eval(evt.data.code)
+                    }, "%ORIGIN%");
+                } catch(error) {
+                    // postMessage can't send Error instances directly.
+                    parent.postMessage({
+                        "requestId": evt.data.requestId,
+                        "type": "SandboxEval",
+                        "success": false,
+                        "error": error.message,
+                        "original": evt.data
+                    }, "%ORIGIN%");
+                }
             }
-            try{
-                parent.postMessage({"success": 1, "result":_eval(evt.data)}, "%ORIGIN%");
-            } catch(error) {
-                parent.postMessage({"success":0, "error": error}, "%ORIGIN%");
+            // Store eval in case of bad situations.
+            _eval = window.eval;
+
+            window.addEventListener("message", evalScript);
+        }
+
+        // Create an iframe.
+        // Can't use contentWindow.document.write in a sandboxed iframe,
+        // so using data:text/html.
+        var sandbox = document.createElement('iframe');
+        sandbox.id ='sandbox';
+        sandbox.sandbox ='allow-scripts'; //sandboxing
+        sandbox.style.cssText = "width:1px;height:1px;display:none;visibility:hidden";
+        var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
+        sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
+        var sandboxLoaded = new Promise(function(resolve, reject) {
+            sandbox.onload = function() {
+                resolve("success");
             }
-        }
-        // Store eval in case of bad situations.
-        _eval = window.eval;
+            sandbox.onerror = function(er) { reject(er);};
+        });
+        document.body.appendChild(sandbox);
 
-        window.addEventListener("message", evalScript);
-    }
+        this.eval = function(code) {
+            return sandboxLoaded.catch(function(error){
+                console.warn("safe eval has been failed to initialize.");
+            }).then(function() {
+                return new Promise(function(resolve, reject) {
+                    var thisId = requestId;
+                    requestId++;
+                    sandbox.contentWindow.postMessage({
+                        requestId: thisId,
+                        type: 'sandboxEval',
+                        code: code
+                    }, "*");
+                    function receiveMessage(event) {
+                        if(event.data.requestId == thisId) {
+                            if(event.data.success) {
+                                resolve(event.data.result);
+                            }
+                            else if(event.data.error) {
+                                reject(event.data.error);
+                            }
+                            else {
+                                reject(Error("Internal error."));
+                            }
+                            window.removeEventListener("message", receiveMessage);
+                        }
+                    }
+                    window.addEventListener("message", receiveMessage);
+                });
+            });
+        };
 
-    // Create an iframe.
-    // Can't use contentWindow.document.write in a sandboxed iframe,
-    // so using data:text/html.
-    var sandbox = document.createElement('iframe');
-    sandbox.id ='sandbox';
-    sandbox.sandbox ='allow-scripts'; //sandboxing
-
-    var html = "\x3Cscript>(" + receiveAndPassBack.toString().replace(/"%ORIGIN%"/g, '"' + window.location.origin + '"') + ")();\x3C/script>";
-    sandbox.src = 'data:text/html;charset=utf-8,' + encodeURI(html);
-    document.body.appendChild(sandbox);
-
-    // register a local variable that we store the returned result.
-    var result;
-
-    function returnResult(evt) {
-        if(evt.success == 1) {
-            resolve(evt.data.result);
-        }
-        else if(evt.sucess == 0) {
-            reject(evt.data.error);
-        }
-        else {
-            reject(Error("Internal error."));
-        }
-    }
-
-    this.getResult = function(code) {
-        result = undefined;
-        //....
+        this.destroy = function() {
+            document.body.removeChild(sandbox);
+        };
     };
-};
+})();
+
 
 module.exports = { 
     throwError: throwError,
     isArrayIndex: isArrayIndex,
-    isCondExpLiteral: isCondExpLiteral,
     concatStrings: concatStrings,
-    beautify: beautify
+    reduceLiterals: reduceLiterals,
+    beautify: beautify,
+    SandboxEval: SandboxEval
 };
