@@ -9,7 +9,6 @@ var Promise = require('bluebird');
  * Syntax: 
  * a.b.c(/^".*"$/) == function ABC(){...}
  * {CallExpression}([TypeDeclaration]) == {FunctionExpression}
- * 
  */
 var deobfuscator = (function(){
     // Will be assigned to values during a validateInput call
@@ -128,7 +127,7 @@ var deobfuscator = (function(){
         return false;
     };
 
-    // Returns a promise that resolves with a node to be replaced. Returns undefined when an eval call fails.
+    // Returns a promise that resolves with a node to be replaced with. Returns undefined when an eval call fails.
     var replace = function(index, node) {
         var evalStr = escodegen.generate({
             "type": "Program",

@@ -80,13 +80,35 @@ function binaryOp(l, o, r) {
     }
 }
 
+/**
+ * Although never have seen an occurence, we should support evaluating unary expressions.
+ */
+function unaryOp(o, x) {
+    switch (o) {
+        case '+':
+            return +x;
+        case '-':
+            return -x;
+        case '~':
+            return ~x;
+        case '!':
+            return !x;
+        case 'delete':
+            return true;
+        case 'void':
+            return undefined;
+        case 'typeof':
+            return typeof x;
+    }
+}
+
 // Checks whether a conditional expression eventually boils down to a literal.
 // If true, returns the ast of the evaluated literal.
-function isCondExpLiteral(obj) {
-    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "Literal"];
+function reduceExpressionToLiteral(obj) {
+    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "UnaryExpression", "Literal"];
     var check = true;
     obj = estraverse.replace(obj, {
-        enter: function(node,parentNode) {
+        enter: function(node, parentNode) {
             // If it has 'type', check if it is allowed.
             // "ExpressionStatement", "SequenceExpression", "BinaryExpression", "Literal"
             if(node.type && allowedTypes.indexOf(node.type) == -1) {
@@ -95,8 +117,8 @@ function isCondExpLiteral(obj) {
             }
             // Skip nodes that we don't even need to check.
             if(parentNode.type == "ConditionalExpression") {
-                if(parentNode.test.value) {   // We are relying on the fact that the traverser always traverse "test" node at the earliest.
-                    this.__current.path == "alternate" && this.remove(); // If an element is skipped via this.skip(), leave callback is still called. 
+                if(parentNode.test.value) {   // We are relying on the fact that the traverser always traverse "test" node at first.
+                    this.__current.path == "alternate" && this.remove(); // If an element is skipped via this.skip(), leave callback will be still called. 
                 }
                 else {
                     this.__current.path == "consequent" && this.remove();
@@ -104,7 +126,7 @@ function isCondExpLiteral(obj) {
             }
         },
         // We've already parsed it, so we do not bother with escodegen and eval and reduce the expression by our own.
-        leave: function(node,parentNode){
+        leave: function(node, parentNode){
             // when leaving Literal, do nothing.
             // when leaving other nodes, it should be possible to evaluate it.
             switch(node.type) {
@@ -116,8 +138,13 @@ function isCondExpLiteral(obj) {
                     var tf = binaryOp(node.left.value, node.operator, node.right.value);
                     return {
                         type: "Literal",
-                        value: tf,
-                        raw: typeof tf == "string" ? "\"" + tf + "\"" : String(tf)
+                        value: tf
+                        // raw: typeof tf == "string" ? "\"" + tf + "\"" : String(tf)
+                    };
+                case "UnaryExpression":
+                    return {
+                        type: "Literal",
+                        value: unaryOp(node.operator, node.argument.value)
                     };
             }
         }
@@ -135,7 +162,7 @@ function isCondExpLiteral(obj) {
  * @param ast
  * @return ast
  */
-function concatStrings(ast) {
+function oldConcatStrings(ast) {
     estraverse.replace(ast, {
         enter: function(node) {
             if(node.type == "BinaryExpression" && node.operator == "+" && node.left.type == "Literal" && node.right.type == "Literal") {
@@ -162,6 +189,132 @@ function concatStrings(ast) {
 
     return ast;
 }
+
+function isAddition(node) {
+    return node.type == "BinaryExpression" && node.operator == "+";
+}
+
+function isStringLiteral(node) {
+    return node.type == "Literal" && typeof node.value == "string";
+}
+/**
+ * Gets an abstract syntax tree of a Javascript code,
+ * tries to concatenate strings addition expressions such as "a" + "b" + "c" in the original Javascript code
+ * so that it becomes "abc", then returns the transformed ast.
+ * 
+ * @param ast
+ * @return ast
+ */
+function concatStrings(ast) {
+    var prevNode = null;
+
+    estraverse.replace(ast, {
+        enter: function(node) {
+            if(isAddition(node)) {
+                if(isStringLiteral(node.left)) {
+                    if(prevNode !== null) {
+                        prevNode.value += node.left.value;
+                        return node.right;
+                    }
+                    prevNode = node.left;
+                }
+                else if(!isAddition(node.left)) {
+                    prevNode = null;
+                }
+            }
+            else if(!isStringLiteral(node) && prevNode !== null) {
+                prevNode = null;
+            }
+        },
+        leave: function(node) {
+            if(isAddition(node)) {
+                if(isStringLiteral(node.right)) {
+                    if(prevNode !== null) {
+                        prevNode.value += node.right.value;
+                        return node.left;
+                    }
+                    prevNode = node.right;
+                }
+                else if(!isAddition(node.right)) {
+                    prevNode = null;
+                }
+            }
+            else if(!isStringLiteral(node) && prevNode !== null) {
+                prevNode = null;
+            }
+        }
+    });
+
+    return ast;
+}
+
+
+function constantFolding(ast) {
+    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression"];
+
+    var prevNode = null; // used to concatenate string addition
+
+    estraverse.replace(ast, {
+        'enter': function(node, parent) {
+            if(isAddition(node)) {
+                if(isStringLiteral(node.left)) {
+                    if(prevNode !== null) {
+                        prevNode.value += node.left.value;
+                        return node.right;
+                    }
+                    prevNode = node.left;
+                }
+                else if(!isAddition(node.left)) {
+                    prevNode = null;
+                }
+            }
+            else if(!isStringLiteral(node) && prevNode !== null) { 
+                prevNode = null;
+            }
+        },
+        'leave': function(node, parent) {
+            switch(node.type) {
+                case "ConditionalExpression":
+                    if(node.test.type == "Literal") {
+                        return node.test.value ? node.consequent : node.alternate;
+                    }
+                    break;
+                case "UnaryExpression":
+                    if(node.argument.type == "Literal") {
+                        return {
+                            type: "Literal",
+                            value: unaryOp(node.operator, node.argument.value)
+                        };
+                    }
+                    break;
+                case "BinaryExpression":
+                    if(node.operator == "+") {
+                        if(isStringLiteral(node.right)) {
+                            if(prevNode !== null) {
+                                prevNode.value += node.right.value;
+                                return node.left;
+                            }
+                            prevNode = node.right;
+                        }
+                        else if(!isAddition(node.right)) {
+                            prevNode = null;
+                        }
+                    }
+                    else if(!isStringLiteral(node) && prevNode !== null) { 
+                        prevNode = null;
+                    }
+                    break;
+                case "SequenceExpression":
+
+                
+                    
+
+            }
+        }
+    });
+}
+
+
 
 function beautify(code){
     return escodegen.generate(concatStrings(esprima.parse(code)));
@@ -271,10 +424,14 @@ var SandboxEval = (function() {
     };
 })();
 
+
+
+
+
 module.exports = { 
     throwError: throwError,
     isArrayIndex: isArrayIndex,
-    isCondExpLiteral: isCondExpLiteral,
+    isCondExpLiteral: reduceExpressionToLiteral,
     concatStrings: concatStrings,
     beautify: beautify,
     SandboxEval: SandboxEval
