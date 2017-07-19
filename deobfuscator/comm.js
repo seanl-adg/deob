@@ -102,94 +102,6 @@ function unaryOp(o, x) {
     }
 }
 
-// Checks whether a conditional expression eventually boils down to a literal.
-// If true, returns the ast of the evaluated literal.
-function reduceExpressionToLiteral(obj) {
-    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "UnaryExpression", "Literal"];
-    var check = true;
-    obj = estraverse.replace(obj, {
-        enter: function(node, parentNode) {
-            // If it has 'type', check if it is allowed.
-            // "ExpressionStatement", "SequenceExpression", "BinaryExpression", "Literal"
-            if(node.type && allowedTypes.indexOf(node.type) == -1) {
-                check = false;
-                this.break();
-            }
-            // Skip nodes that we don't even need to check.
-            if(parentNode.type == "ConditionalExpression") {
-                if(parentNode.test.value) {   // We are relying on the fact that the traverser always traverse "test" node at first.
-                    this.__current.path == "alternate" && this.remove(); // If an element is skipped via this.skip(), leave callback will be still called. 
-                }
-                else {
-                    this.__current.path == "consequent" && this.remove();
-                }
-            }
-        },
-        // We've already parsed it, so we do not bother with escodegen and eval and reduce the expression by our own.
-        leave: function(node, parentNode){
-            // when leaving Literal, do nothing.
-            // when leaving other nodes, it should be possible to evaluate it.
-            switch(node.type) {
-                case "SequenceExpression":
-                    return node.expressions[node.expressions.length - 1];
-                case "ConditionalExpression":
-                    return node.test.value ? node.consequent : node.alternate;
-                case "BinaryExpression":
-                    var tf = binaryOp(node.left.value, node.operator, node.right.value);
-                    return {
-                        type: "Literal",
-                        value: tf
-                        // raw: typeof tf == "string" ? "\"" + tf + "\"" : String(tf)
-                    };
-                case "UnaryExpression":
-                    return {
-                        type: "Literal",
-                        value: unaryOp(node.operator, node.argument.value)
-                    };
-            }
-        }
-    });
-    
-    return check ? obj : false;
-}
-/**
- * Gets an abstract syntax tree of a Javascript code,
- * tries to concatenate strings addition expressions such as "a" + "b" + "c" in the original Javascript code
- * so that it becomes "abc", then returns the transformed ast.
- * It does not currently concatenate when the first argument is not a string literal,
- * like a + "b" + "c".
- * 
- * @param ast
- * @return ast
- */
-function oldConcatStrings(ast) {
-    estraverse.replace(ast, {
-        enter: function(node) {
-            if(node.type == "BinaryExpression" && node.operator == "+" && node.left.type == "Literal" && node.right.type == "Literal") {
-                var conc = node.left.value + node.right.value;
-                return {
-                    type: "Literal",
-                    value: conc
-                    //raw: "\"" + conc + "\""
-                };
-                // should check the parent node again
-            }
-        },
-        leave: function(node, parentNode) {
-            if(parentNode.type == "BinaryExpression" && node.type == "Literal" && parentNode.operator == "+" && parentNode.left.type == "Literal" && parentNode.right.type == "Literal") {
-                var conc = parentNode.left.value + parentNode.right.value;
-                parentNode.type = "Literal";
-                parentNode.value = conc;
-                delete parentNode.left;
-                delete parentNode.right;
-                delete parentNode.operator;
-            }
-        }
-    });
-
-    return ast;
-}
-
 function isAddition(node) {
     return node.type == "BinaryExpression" && node.operator == "+";
 }
@@ -197,6 +109,7 @@ function isAddition(node) {
 function isStringLiteral(node) {
     return node.type == "Literal" && typeof node.value == "string";
 }
+
 /**
  * Gets an abstract syntax tree of a Javascript code,
  * tries to concatenate strings addition expressions such as "a" + "b" + "c" in the original Javascript code
@@ -217,14 +130,8 @@ function concatStrings(ast) {
                         return node.right;
                     }
                     prevNode = node.left;
-                }
-                else if(!isAddition(node.left)) {
-                    prevNode = null;
-                }
-            }
-            else if(!isStringLiteral(node) && prevNode !== null) {
-                prevNode = null;
-            }
+                } else if(!isAddition(node.left)) { prevNode = null; }
+            } else if(!isStringLiteral(node) && prevNode !== null) { prevNode = null; }
         },
         leave: function(node) {
             if(isAddition(node)) {
@@ -234,87 +141,79 @@ function concatStrings(ast) {
                         return node.left;
                     }
                     prevNode = node.right;
-                }
-                else if(!isAddition(node.right)) {
-                    prevNode = null;
-                }
+                } else if(!isAddition(node.right)) { prevNode = null; }
             }
-            else if(!isStringLiteral(node) && prevNode !== null) {
-                prevNode = null;
-            }
+            else if(!isStringLiteral(node) && prevNode !== null) { prevNode = null; }
         }
     });
 
     return ast;
 }
 
-
-function constantFolding(ast) {
-    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression"];
-
-    var prevNode = null; // used to concatenate string addition
-
-    estraverse.replace(ast, {
-        'enter': function(node, parent) {
-            if(isAddition(node)) {
-                if(isStringLiteral(node.left)) {
-                    if(prevNode !== null) {
-                        prevNode.value += node.left.value;
-                        return node.right;
-                    }
-                    prevNode = node.left;
-                }
-                else if(!isAddition(node.left)) {
-                    prevNode = null;
+/**
+ * Checks whether a given expression can be deterministically reduced to a single literal.
+ * Receives an AST tree of an expression, mutates the ast returns the reduced AST of a literal when it can be reduced.
+ * Otherwise, return false.
+ * Note: As a side effect, it mutates the ast partially.
+ * @param {*} ast
+ * @return {boolean|ast}
+ */
+function reduceLiterals(ast) {
+    var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "UnaryExpression", "Literal"];
+    var check = true;
+    
+    // Using estraverse.replace to check the root node.
+    ast = estraverse.replace(ast, {
+        enter: function(node, parentNode) {
+            if (parentNode) {
+                switch (parentNode.type) {
+                    case "SequenceExpression":
+                        if (parentNode.expressions.indexOf(node) !== parentNode.expressions.length - 1) { this.remove(); }
+                        break;
+                    case "ConditionalExpression":
+                        if (this.__current.path != "test") {
+                            if (parentNode.test.value) {
+                                // Skip is safer, removing it results in an invalid AST and it may stay if the call returns false.
+                                this.__current.path == "alternate" && this.skip();
+                            } else {
+                                this.__current.path == "consequent" && this.skip();
+                            }
+                        }
+                        break;
                 }
             }
-            else if(!isStringLiteral(node) && prevNode !== null) { 
-                prevNode = null;
+            if(node && node.type && allowedTypes.indexOf(node.type) == -1) {
+                check = false;
+                this.break();
             }
         },
-        'leave': function(node, parent) {
+        leave: function(node, parentNode) {
+            var newNode;
             switch(node.type) {
-                case "ConditionalExpression":
-                    if(node.test.type == "Literal") {
-                        return node.test.value ? node.consequent : node.alternate;
-                    }
-                    break;
-                case "UnaryExpression":
-                    if(node.argument.type == "Literal") {
-                        return {
-                            type: "Literal",
-                            value: unaryOp(node.operator, node.argument.value)
-                        };
-                    }
-                    break;
-                case "BinaryExpression":
-                    if(node.operator == "+") {
-                        if(isStringLiteral(node.right)) {
-                            if(prevNode !== null) {
-                                prevNode.value += node.right.value;
-                                return node.left;
-                            }
-                            prevNode = node.right;
-                        }
-                        else if(!isAddition(node.right)) {
-                            prevNode = null;
-                        }
-                    }
-                    else if(!isStringLiteral(node) && prevNode !== null) { 
-                        prevNode = null;
-                    }
-                    break;
                 case "SequenceExpression":
-
-                
-                    
-
+                    return node.expressions[node.expressions.length - 1];
+                case "ConditionalExpression":
+                    return node.test.value ? node.consequent : node.alternate;
+                case "BinaryExpression":
+                    return {
+                        type: "Literal",
+                        value: binaryOp(node.left.value, node.operator, node.right.value)
+                    };
+                case "UnaryExpression":
+                    return {
+                        type: "Literal",
+                        value: unaryOp(node.operator, node.argument.value)
+                    };
+                case "Literal":
+                    break;
             }
         }
     });
+
+    return check ? ast : false;
 }
 
-
+// ToDo: incorporate concatStrings and reduceLiterals in a single call to be used in beautify.
 
 function beautify(code){
     return escodegen.generate(concatStrings(esprima.parse(code)));
@@ -425,14 +324,11 @@ var SandboxEval = (function() {
 })();
 
 
-
-
-
 module.exports = { 
     throwError: throwError,
     isArrayIndex: isArrayIndex,
-    isCondExpLiteral: reduceExpressionToLiteral,
     concatStrings: concatStrings,
+    reduceLiterals: reduceLiterals,
     beautify: beautify,
     SandboxEval: SandboxEval
 };

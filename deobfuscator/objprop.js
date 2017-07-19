@@ -34,7 +34,7 @@ var deobfuscator = (function(){
                     valueArray[i] = prop.value;
                 }
                 else if(allowedTypes.indexOf(prop.value.type) != -1) {
-                    var reduced = comm.isCondExpLiteral(prop.value);
+                    var reduced = comm.reduceLiterals(prop.value);
                     if(reduced === false) {
                         return false;
                     }

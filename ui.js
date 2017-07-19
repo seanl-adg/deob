@@ -26,6 +26,7 @@ var deobfuscateStringVars = require('./deobfuscator/stringvars.js');
 var deobfuscateHexEncoded = require('./deobfuscator/hexencoded.js');
 var deobfuscateEvalPacker = require('./deobfuscator/evalpacker.js');
 var deobfuscateFunctionCall = require('./deobfuscator/replacefunctioncall.js');
+var deobfuscateScopeLiteral = require('./deobfuscator/replace-scope-literal.js');
 
 var inputData, toDeob; // ace editor instances
 
@@ -37,8 +38,8 @@ function setVal(result) {
 
 function Do() {
     var result;
-    var selectedmethod = document.querySelector('input[name="method"]:checked').value;
-    switch(selectedmethod) {
+    var selectedMethod = document.querySelector('input[name="method"]:checked').value;
+    switch(selectedMethod) {
         case "objprop":
             setVal(deobfuscateObjProp.deobfuscate( inputData.getValue(), toDeob.getValue() ));
             return;
@@ -53,6 +54,9 @@ function Do() {
             return;
         case "repfncall":
             deobfuscateFunctionCall.deobfuscateAsync( inputData.getValue(), toDeob.getValue() ).then(setVal);
+            return;
+        case "repscopelit":
+            setVal(deobfuscateScopeLiteral.deobfuscate( toDeob.getValue() ));
             return;
     }
 }

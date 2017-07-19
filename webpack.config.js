@@ -1,6 +1,7 @@
 const webpack = require('webpack');
+const path = require('path');
 
-var config = {
+const config = {
     entry: "./ui.js",
     output: {
         path: __dirname + "/docs",
@@ -13,7 +14,22 @@ var config = {
     },
     module: {
         loaders: [
-            { test: /\.json$/, loader: "json-loader" }
+            {
+                test: /\.json$/,
+                loader: "json-loader"
+            },
+            {
+                test: /\.js$/,
+                loader: "babel-loader",
+                include: path.resolve(__dirname, "deobfuscator/replace-scope-literal.js"),
+                query: {
+                    plugins: [
+                        ["transform-es2015-for-of", {
+                            "loose": true
+                        }]
+                    ],
+                }
+            }
         ]
     },
     plugins: []

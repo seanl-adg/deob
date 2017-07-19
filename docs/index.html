@@ -51,7 +51,7 @@
         }
         #Radio label {
             height: 20px;
-            display: inline-block;
+            display: block;
             margin-left: 1em;
         }
         #Radio input {
@@ -255,6 +255,10 @@
                 <label>
                     <input type="radio" name="method" value="repfncall">
                     <i>a.b.c(/.*/) == ABC</i>
+                </label>
+                <label>
+                    <input type="radio" name="method" value="repscopelit">
+                    <i>function() { var a = "ABC", ... }</i>
                 </label>
                 <button type="button" id="deob">Convert</button>
                 <div id="info"> </div>

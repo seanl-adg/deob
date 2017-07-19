@@ -4,7 +4,8 @@
   "main": "deob.js",
   "scripts": {
     "dev": "cross-env NODE_ENV=development webpack-dev-server",
-    "build": "removeNPMAbsolutePaths \"./\" && cross-env NODE_ENV=production webpack"
+    "build": "removeNPMAbsolutePaths \"./\" && cross-env NODE_ENV=production webpack",
+    "test": "mocha"
   },
   "keywords": [],
   "author": "seanl-adg",
@@ -22,6 +23,10 @@
     "split.js": "^1.2.0"
   },
   "devDependencies": {
+    "babel-core": "^6.25.0",
+    "babel-loader": "^7.1.1",
+    "babel-plugin-transform-es2015-for-of": "^6.23.0",
+    "chai": "^4.1.0",
     "json-loader": "^0.5.4",
     "removeNPMAbsolutePaths": "0.0.3",
     "webpack": "^2.2.1",

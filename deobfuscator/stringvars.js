@@ -27,7 +27,7 @@ var deobfuscator = (function(){
                     identifierArray[i] = declaratorArray[i].id.name;
                 }
                 else if(allowedTypes.indexOf(declaratorArray[i].init.type) != -1) {
-                    var reduced = comm.isCondExpLiteral(declaratorArray[i].init);
+                    var reduced = comm.reduceLiterals(declaratorArray[i].init);
                     if(reduced === false) {
                         return false;
                     }
