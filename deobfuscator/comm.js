@@ -155,15 +155,26 @@ function concatStrings(ast) {
  * Receives an AST tree of an expression, mutates the ast returns the reduced AST of a literal when it can be reduced.
  * Otherwise, return false.
  * Note: As a side effect, it mutates the ast partially.
+ *
+ * It creates a temporary nodes of type "RawLiteral"
+ *
  * @param {*} ast
  * @return {boolean|ast}
  */
 function reduceLiterals(ast) {
     var allowedTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "UnaryExpression", "Literal"];
+    allowedTypes.push("RawLiteral");
+    allowedTypes.push("Root");
     var check = true;
-    
+
     // Using estraverse.replace to check the root node.
-    ast = estraverse.replace(ast, {
+
+    var outer = {
+        type: "Root",
+        root: ast
+    };
+
+    estraverse.replace(outer, {
         enter: function(node, parentNode) {
             if (parentNode) {
                 switch (parentNode.type) {
@@ -188,29 +199,156 @@ function reduceLiterals(ast) {
             }
         },
         leave: function(node, parentNode) {
-            var newNode;
+            var newNode = node;
             switch(node.type) {
                 case "SequenceExpression":
-                    return node.expressions[node.expressions.length - 1];
+                    newNode = node.expressions[node.expressions.length - 1];
+                    break;
                 case "ConditionalExpression":
-                    return node.test.value ? node.consequent : node.alternate;
+                    newNode = node.test.value ? node.consequent : node.alternate;
+                    break;
                 case "BinaryExpression":
-                    return {
-                        type: "Literal",
+                    newNode = {
+                        type: "RawLiteral",
                         value: binaryOp(node.left.value, node.operator, node.right.value)
                     };
+                    break;
                 case "UnaryExpression":
-                    return {
-                        type: "Literal",
+                    newNode = {
+                        type: "RawLiteral",
                         value: unaryOp(node.operator, node.argument.value)
                     };
+                    break;
                 case "Literal":
+                    if (node.regex) {
+                        newNode = {
+                            type: "RawLiteral",
+                            value: new RegExp(node.regex.patterns, node.regex.flags)
+                        };
+                    } else {
+                        newNode = {
+                            type: "RawLiteral",
+                            value: node.value
+                        }
+                    }
                     break;
             }
+
+            if (newNode !== node) {
+                if (parentNode.type !== "Root") {
+                    return newNode;
+                } else {
+                    replaceObject(node, newNode);
+                }
+            }
+
+        },
+        keys: {
+            "RawLiteral": [],
+            "Root": ["root"]
         }
     });
 
-    return check ? ast : false;
+    // Revert `RawLiteral` nodes back to valid ast nodes.
+    estraverse.traverse(outer, {
+        enter: function(node) {
+            if (node.type === "RawLiteral") {
+                replaceObject(node, makeLiteral(node.value));
+            }
+        },
+        keys: {
+            "RawLiteral": [],
+            "Root": ["root"]
+        }
+    })
+
+    if (!check) {
+        return false;
+    } else {
+        return outer.root
+    }
+}
+
+function replaceObject(obj, rep) {
+    for (var key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            delete obj[key];
+        }
+    }
+    for (var key in rep) {
+        if (rep.hasOwnProperty(key)) {
+            obj[key] = rep[key];
+        }
+    }
+}
+
+/**
+ * Converts a javascript literal to a valid JS ast literal.
+ * @param value A JS literal value, either a number, string, boolean, regex.
+ */
+function makeLiteral(value) {
+    switch(typeof value) {
+        case "number":
+            if (Number.isNaN(value)) {
+                return {
+                    "type":  "Identifier",
+                    "name": "NaN"
+                };
+            } else if (value < 0) {
+                return {
+                    "type": "UnaryExpression",
+                    "operator": "-",
+                    "argument": {
+                        "type": "Literal",
+                        "value": -value
+                    },
+                    "prefix": true
+                };
+            } else {
+                return {
+                    "type": "Literal",
+                    "value": value
+                }
+            }
+        case "string":
+            return {
+                "type": "Literal",
+                "value": value
+            };
+        case "boolean":
+            return {
+                "type": "Literal",
+                "value": value
+            };
+        case "undefined":
+            return {
+                "type": "Identifier",
+                "name": "undefined"
+            };
+        case "object":
+            // It is a regular expression.
+            if (value === null) {
+                return {
+                    "type": "Literal",
+                    "value": null
+                };
+            }
+            var strRep = value.toString();
+            var pattern = strRep.slice(1);
+            var i = pattern.lastIndexOf('/');
+            var flags = pattern.slice(i + 1);
+            pattern = pattern.slice(0, i);
+            return {
+                "type": "Literal",
+                "value": strRep,
+                "regex": {
+                    "pattern": pattern,
+                    "flags": flags
+                }
+            }
+        default:
+            throw new TypeError('Invalid literal value');
+    }
 }
 
 // ToDo: incorporate concatStrings and reduceLiterals in a single call to be used in beautify.
@@ -329,6 +467,8 @@ module.exports = {
     isArrayIndex: isArrayIndex,
     concatStrings: concatStrings,
     reduceLiterals: reduceLiterals,
+    makeLiteral: makeLiteral,
+    replaceObject: replaceObject,
     beautify: beautify,
     SandboxEval: SandboxEval
 };

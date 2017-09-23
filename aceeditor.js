@@ -20,7 +20,7 @@ var initEditor = function (editorId) {
     editor.getSession().setUseWrapMode(true);
     editor.$blockScrolling = Infinity; // Remove warning message
     editorInstances[editorId] = editor;
-    
+
     return editor;
 };
 

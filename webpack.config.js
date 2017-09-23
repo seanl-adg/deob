@@ -17,18 +17,6 @@ const config = {
             {
                 test: /\.json$/,
                 loader: "json-loader"
-            },
-            {
-                test: /\.js$/,
-                loader: "babel-loader",
-                include: path.resolve(__dirname, "deobfuscator/replace-scope-literal.js"),
-                query: {
-                    plugins: [
-                        ["transform-es2015-for-of", {
-                            "loose": true
-                        }]
-                    ],
-                }
             }
         ]
     },
@@ -41,6 +29,18 @@ if (process.env.NODE_ENV === 'production') {
             compress: {}
         })
     );
+    config.module.loaders.push({
+        test: /\.js$/,
+        loader: "babel-loader",
+        include: path.resolve(__dirname, "deobfuscator/replace-scope-literal.js"),
+        query: {
+            plugins: [
+                ["transform-es2015-for-of", {
+                    "loose": true
+                }]
+            ],
+        }
+    })
 }
 
 module.exports = config;

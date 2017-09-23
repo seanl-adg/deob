@@ -36,10 +36,34 @@ describe('comm', function() {
             var ast = esprima.parse(code[0]);
             ast = ast.body[0].expression;
             ast = comm.reduceLiterals(ast);
-            console.log(ast);
             var foldedCode = escodegen.generate(ast);
             expect(foldedCode).to.equal(code[1]);
         });
     });
   });
+
+  describe('makeLiteral()', function() {
+    var codes = [
+      [0,         { type: "Literal", value: 0 }],
+      [1,         { type: "Literal", value: 1 }],
+      [-100,      { type: "UnaryExpression", operator: "-", argument: { type: "Literal", value: 100 }, prefix: true }],
+      [0x10,      { type: "Literal", value: 16 }],
+      [NaN,       { type: "Identifier", name: "NaN" }],
+      ["asdf",    { type: "Literal", value: "asdf" }],
+      [/asdf/gm,  { type: "Literal", value: "/asdf/gm", regex: { pattern: "asdf", flags: "gm" } }]
+    ];
+
+    codes.forEach(function(code) {
+
+      it('should convert a literal ' + String(code[0]) + ' to ' + JSON.stringify(code[1]), function() {
+        var literal = code[0];
+        var ast = comm.makeLiteral(literal);
+        expect(ast).to.deep.equal(code[1]);
+      });
+
+    });
+
+  });
+
+
 });

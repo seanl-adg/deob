@@ -14,7 +14,10 @@ var deobfuscator = (function () {
     var allowedVariableDeclaratorTypes = ["ConditionalExpression", "SequenceExpression", "BinaryExpression", "UnaryExpression", "Literal"];
     var deobfuscate = function (code) {
         var codeAST = esprima.parse(code);
-        var scopeManager = escope.analyze(codeAST);
+        // By setting optimistic: true, escope assumes that some edge case related to `eval` and `with` won't happen.
+        // This is a defect admittedly, but it is the case for most of obfuscated codes, internal `eval` call is supposed not to interact with mangled variable names.
+        var escopeAnalyzeOption = { optimistic: true };
+        var scopeManager = escope.analyze(codeAST, escopeAnalyzeOption);
         var scopesLength = scopeManager.scopes.length;
         var scope;
         var scopeIndex = 0;
@@ -43,9 +46,7 @@ var deobfuscator = (function () {
                             for (reference of variable.references) {
                                 if (reference.identifier === variable.defs[0].node.id) { continue; }
                                 // Modify the reference identifier node to a literal node.
-                                delete reference.identifier.name;
-                                reference.identifier.type = 'Literal';
-                                reference.identifier.value = folded.value;
+                                comm.replaceObject(reference.identifier, folded);
                             }
                             // Next, delete the variable declaration.
                             var def = variable.defs[0];
@@ -66,7 +67,7 @@ var deobfuscator = (function () {
                 }
             }
             // Maybe there is a way to update only the next scope, but at the moment we should analyze the full AST again.
-            scopeManager = escope.analyze(codeAST);
+            // scopeManager = escope.analyze(codeAST, escopeAnalyzeOption);
         }
 
         estraverse.replace(codeAST, {
